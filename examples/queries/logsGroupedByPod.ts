@@ -1,13 +1,14 @@
 import {Client, transform} from "../../src";
+import {filter, flatMap} from "rxjs/operators";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
 const podLogs = c.core.v1.Pod
-  .list("default")
+  .list("default").pipe(
   // Retrieve logs for all pods, filter for logs with `ERROR:`.
-  .flatMap(pod =>
+  flatMap(pod =>
     transform.core.v1.pod
-      .getLogs(c, pod)
-      .filter(({logs}) => logs.toLowerCase().includes("error:")));
+      .getLogs(c, pod).pipe(
+      filter(({logs}) => logs.toLowerCase().includes("error:")))));
 
 podLogs.subscribe(({pod, logs}) => {
   // Print all the name of the pod and its logs.

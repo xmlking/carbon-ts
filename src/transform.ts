@@ -1,24 +1,27 @@
 import * as k8s from '@carbonql/kubernetes-client-node';
 import * as client from './client';
-import * as query from 'rxjs/Rx';
 import * as syncQuery from 'linq';
+import {from, Observable, of} from 'rxjs';
+import {filter, flatMap, groupBy, map, reduce, toArray} from "rxjs/operators";
 
-export type Transform<TIn, TOut=TIn> = (ti: TIn) => TOut;
+export type Transform<TIn, TOut = TIn> = (ti: TIn) => TOut;
 export type Filter<TIn> = (ti: TIn) => boolean;
 
 export const merge = <TIn>(makeRight: (o: TIn) => any): Transform<TIn> => {
   return left => {
     Object.assign(left, makeRight(left));
     return left;
-  }
-}
+  };
+};
 
-export const doTransform = <TIn>(...doThese: ((o: TIn) => void)[]): Transform<TIn> => {
+export const doTransform = <TIn>(
+  ...doThese: ((o: TIn) => void)[]
+): Transform<TIn> => {
   return tin => {
     doThese.forEach(doThis => doThis(tin));
     return tin;
-  }
-}
+  };
+};
 
 //
 // Core.
@@ -32,17 +35,18 @@ export namespace core {
       //
 
       export const make = (
-        name: string, data: { [key: string]: string; }
+        name: string,
+        data: { [key: string]: string }
       ): k8s.IoK8sApiCoreV1ConfigMap => {
         return <k8s.IoK8sApiCoreV1ConfigMap>{
-          "apiVersion": "v1",
-          "kind": "ConfigMap",
-          "metadata": {
-            "name": name,
+          apiVersion: "v1",
+          kind: "ConfigMap",
+          metadata: {
+            name: name
           },
-          "data": data,
-        }
-      }
+          data: data
+        };
+      };
     }
 
     export namespace container {
@@ -53,11 +57,11 @@ export namespace core {
       export const make = (
         name: string,
         image: string,
-        port?: number | k8s.IoK8sApiCoreV1ContainerPort,
+        port?: number | k8s.IoK8sApiCoreV1ContainerPort
       ): k8s.IoK8sApiCoreV1Container => {
         const c = <k8s.IoK8sApiCoreV1Container>{
           name: name,
-          image: image,
+          image: image
         };
 
         if (port) {
@@ -65,7 +69,7 @@ export namespace core {
         }
 
         return c;
-      }
+      };
 
       //
       // Verbs.
@@ -73,12 +77,12 @@ export namespace core {
 
       export const addEnv = (
         name: string,
-        value: string,
+        value: string
       ): Transform<k8s.IoK8sApiCoreV1Container> =>
         doTransform(c => {
           const envVar = <k8s.IoK8sApiCoreV1EnvVar>{
             name: name,
-            value: value,
+            value: value
           };
 
           if (c.env) {
@@ -86,12 +90,12 @@ export namespace core {
           } else {
             c.env = [envVar];
           }
-        })
+        });
 
       export const addEnvFromSecret = (
         name: string,
         secretKeyName: string,
-        secretKey: string,
+        secretKey: string
       ): Transform<k8s.IoK8sApiCoreV1Container> =>
         doTransform(c => {
           const secretRef = <k8s.IoK8sApiCoreV1EnvVar>{
@@ -99,7 +103,7 @@ export namespace core {
             valueFrom: {
               secretKeyRef: {
                 name: secretKeyName,
-                key: secretKey,
+                key: secretKey
               }
             }
           };
@@ -112,38 +116,52 @@ export namespace core {
         });
 
       export const toPod = (
-        name: string,
-      ): Transform<k8s.IoK8sApiCoreV1Container | k8s.IoK8sApiCoreV1Container[], k8s.IoK8sApiCoreV1Pod> => {
+        name: string
+      ): Transform<
+        k8s.IoK8sApiCoreV1Container | k8s.IoK8sApiCoreV1Container[],
+        k8s.IoK8sApiCoreV1Pod
+      > => {
         return containers => {
           if (!Array.isArray(containers)) {
             containers = [containers];
           }
 
           return pod.make(name, containers);
-        }
-      }
+        };
+      };
 
       export const deploy = (
         replicas = 1,
         deploymentName?: string,
-        appLabels?: Labels,
-      ): Transform<k8s.IoK8sApiCoreV1Container, k8s.IoK8sApiAppsV1beta1Deployment> => {
+        appLabels?: Labels
+      ): Transform<
+        k8s.IoK8sApiCoreV1Container,
+        k8s.IoK8sApiAppsV1beta1Deployment
+      > => {
         return c => {
           if (!deploymentName) {
             deploymentName = c.name;
           }
 
           if (!appLabels) {
-            appLabels = {app: deploymentName};
+            appLabels = { app: deploymentName };
           }
 
-          return apps.v1beta1.deployment.make(deploymentName, appLabels, c, replicas);
-        }
-      }
+          return apps.v1beta1.deployment.make(
+            deploymentName,
+            appLabels,
+            c,
+            replicas
+          );
+        };
+      };
     }
 
     export namespace persistentVolume {
-      export type AccessModeTypes = "ReadWriteOnce" | "ReadOnlyMany" | "ReadWriteMany";
+      export type AccessModeTypes =
+        | "ReadWriteOnce"
+        | "ReadOnlyMany"
+        | "ReadWriteMany";
 
       //
       // Constructors.
@@ -153,28 +171,28 @@ export namespace core {
         name: string,
         storageCapacity: string,
         accessModes: AccessModeTypes[] = ["ReadWriteOnce"],
-        labels?: Labels,
+        labels?: Labels
       ): k8s.IoK8sApiCoreV1PersistentVolume => {
-        const v = <k8s.IoK8sApiCoreV1PersistentVolume><object>{
+        const v = <k8s.IoK8sApiCoreV1PersistentVolume>(<object>{
           apiVersion: "v1",
           kind: "PersistentVolume",
           metadata: {
-            name: name,
+            name: name
           },
           spec: {
             accessModes: accessModes,
-            capacity: <{ [key: string]: string; }>{
-              storage: storageCapacity,
-            },
+            capacity: <{ [key: string]: string }>{
+              storage: storageCapacity
+            }
           }
-        };
+        });
 
         if (labels) {
           v.metadata.labels = labels;
         }
 
         return v;
-      }
+      };
 
       // TODO:
       //   * mountOptions
@@ -182,23 +200,27 @@ export namespace core {
       //   * storageClassName
 
       export const configureAsHostPathVolume = (
-        path: string,
+        path: string
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
-          v.spec.hostPath = <k8s.IoK8sApiCoreV1HostPathVolumeSource>{path: path};
+          v.spec.hostPath = <k8s.IoK8sApiCoreV1HostPathVolumeSource>{
+            path: path
+          };
         });
 
       export const configureAsAwsElasticBlockStore = (
         blockStoreName: string,
         fsType: string = "ext4",
         readOnly: boolean = false,
-        partition?: number,
+        partition?: number
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
-          v.spec.awsElasticBlockStore = <k8s.IoK8sApiCoreV1AWSElasticBlockStoreVolumeSource>{
+          v.spec.awsElasticBlockStore = <
+            k8s.IoK8sApiCoreV1AWSElasticBlockStoreVolumeSource
+          >{
             fsType: fsType,
             readOnly: readOnly,
-            volumeID: blockStoreName,
+            volumeID: blockStoreName
           };
 
           if (partition) {
@@ -210,13 +232,15 @@ export namespace core {
         diskName: string,
         fsType: string = "ext4",
         partition?: number,
-        readOnly: boolean = false,
+        readOnly: boolean = false
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
-          v.spec.gcePersistentDisk = <k8s.IoK8sApiCoreV1GCEPersistentDiskVolumeSource>{
+          v.spec.gcePersistentDisk = <
+            k8s.IoK8sApiCoreV1GCEPersistentDiskVolumeSource
+          >{
             fsType: fsType,
             readOnly: readOnly,
-            pdName: diskName,
+            pdName: diskName
           };
 
           if (partition) {
@@ -234,9 +258,9 @@ export namespace core {
         claimName: string,
         storageRequest: string,
         accessModes: persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
-        labels: Labels = {app: claimName}
+        labels: Labels = { app: claimName }
       ): k8s.IoK8sApiCoreV1PersistentVolumeClaim => {
-        return <k8s.IoK8sApiCoreV1PersistentVolumeClaim><object>{
+        return <k8s.IoK8sApiCoreV1PersistentVolumeClaim>(<object>{
           apiVersion: "v1",
           kind: "PersistentVolumeClaim",
           metadata: {
@@ -246,13 +270,13 @@ export namespace core {
           spec: {
             accessModes: accessModes,
             resources: {
-              requests: <{ [key: string]: string; }>{
-                storage: storageRequest,
+              requests: <{ [key: string]: string }>{
+                storage: storageRequest
               }
             }
           }
-        };
-      }
+        });
+      };
     }
 
     export namespace pod {
@@ -263,7 +287,7 @@ export namespace core {
       export const make = (
         name: string,
         containers: k8s.IoK8sApiCoreV1Container | k8s.IoK8sApiCoreV1Container[],
-        appLabels: Labels = {app: name},
+        appLabels: Labels = { app: name }
       ): k8s.IoK8sApiCoreV1Pod => {
         if (!Array.isArray(containers)) {
           containers = [containers];
@@ -274,13 +298,13 @@ export namespace core {
           kind: "Pod",
           metadata: {
             name: name,
-            labels: appLabels,
+            labels: appLabels
           },
           spec: {
-            containers: containers,
+            containers: containers
           }
         };
-      }
+      };
 
       //
       // Utilities.
@@ -288,25 +312,32 @@ export namespace core {
 
       export const transformContainers = (
         t: Transform<k8s.IoK8sApiCoreV1Container>,
-        filter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        filter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1Pod> => {
-        return doTransform(p => util.v1.podSpec.transformContainers(t, filter)(p.spec));
-      }
+        return doTransform(p =>
+          util.v1.podSpec.transformContainers(t, filter)(p.spec)
+        );
+      };
 
-      export const getReadyStatus = (pod: k8s.IoK8sApiCoreV1Pod): k8s.IoK8sApiCoreV1PodCondition => {
-        const readyStatus =
-          ((pod && pod.status && pod.status.conditions) ? pod.status.conditions : [])
-            .filter(cond => cond.type == "Ready");
+      export const getReadyStatus = (
+        pod: k8s.IoK8sApiCoreV1Pod
+      ): k8s.IoK8sApiCoreV1PodCondition => {
+        const readyStatus = (pod && pod.status && pod.status.conditions
+          ? pod.status.conditions
+          : []
+        ).filter(cond => cond.type == "Ready");
         if (readyStatus.length == 0) {
           return <k8s.IoK8sApiCoreV1PodCondition>{
             type: "Ready",
             status: "False",
             reason: "Unscheduled",
-            message: "Pod has not been scheduled",
+            message: "Pod has not been scheduled"
           };
         }
         return readyStatus[0];
-      }
+      };
 
       //
       // Verbs.
@@ -317,58 +348,86 @@ export namespace core {
         mountPath: string,
         readOnly = false,
         subPath?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1Pod> =>
         doTransform(p =>
           util.v1.podSpec.addVolume(
-            v, mountPath, readOnly, subPath, mountFilter
-          )(p.spec));
+            v,
+            mountPath,
+            readOnly,
+            subPath,
+            mountFilter
+          )(p.spec)
+        );
 
       export const addMount = (
         volumeName: string,
         mountPath: string,
         readOnly = false,
         subPath?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1Pod> =>
         doTransform(p =>
           util.v1.podSpec.addMount(
-            volumeName, mountPath, readOnly, subPath, mountFilter
-          )(p.spec));
+            volumeName,
+            mountPath,
+            readOnly,
+            subPath,
+            mountFilter
+          )(p.spec)
+        );
 
       export const deploy = (
         replicas = 1,
         deploymentName?: string,
-        appLabels?: Labels,
-      ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiAppsV1beta1Deployment> => {
+        appLabels?: Labels
+      ): Transform<
+        k8s.IoK8sApiCoreV1Pod,
+        k8s.IoK8sApiAppsV1beta1Deployment
+      > => {
         return p => {
           if (!deploymentName) {
             deploymentName = p.metadata.name;
           }
 
           if (!appLabels) {
-            appLabels = {app: deploymentName};
+            appLabels = { app: deploymentName };
           }
 
-          return apps.v1beta1.deployment.make(deploymentName, appLabels, p, replicas);
-        }
-      }
+          return apps.v1beta1.deployment.make(
+            deploymentName,
+            appLabels,
+            p,
+            replicas
+          );
+        };
+      };
 
       export const addConfigData = (
         data: { [key: string]: string },
         mountPath: string,
         configMapName?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiCoreV1ConfigMap> => {
         return p => {
           if (!configMapName) {
             configMapName = p.metadata.name;
           }
           return util.v1.podSpec.addConfigData(
-            data, mountPath, configMapName, undefined, mountFilter,
+            data,
+            mountPath,
+            configMapName,
+            undefined,
+            mountFilter
           )(p.spec);
-        }
-      }
+        };
+      };
 
       export const claimPersistentVolume = (
         pvClaim: string | k8s.IoK8sApiCoreV1PersistentVolume,
@@ -377,42 +436,55 @@ export namespace core {
         volumeName?: string,
         readOnly = false,
         subPath?: string,
-        accessModes: core.v1.persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
-      ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiCoreV1PersistentVolumeClaim> =>
-        p =>
-          util.v1.podSpec.claimPersistentVolume(
-            pvClaim, mountPath, storageRequest, volumeName, readOnly,subPath,
-            accessModes, mountFilter
-          )(p.spec);
+        accessModes: core.v1.persistentVolume.AccessModeTypes[] = [
+          "ReadWriteOnce"
+        ],
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
+      ): Transform<
+        k8s.IoK8sApiCoreV1Pod,
+        k8s.IoK8sApiCoreV1PersistentVolumeClaim
+      > => p =>
+        util.v1.podSpec.claimPersistentVolume(
+          pvClaim,
+          mountPath,
+          storageRequest,
+          volumeName,
+          readOnly,
+          subPath,
+          accessModes,
+          mountFilter
+        )(p.spec);
 
       export const getLogs = (
-        c: client.Client, pod: k8s.IoK8sApiCoreV1Pod,
-      ): query.Observable<{pod: k8s.IoK8sApiCoreV1Pod, logs: string}> =>
-        c.core.v1.Pod
-          .logs(pod.metadata.name, pod.metadata.namespace)
-          .map(logs => logs == null ? {pod, logs: ""} : {pod, logs})
+        c: client.Client,
+        pod: k8s.IoK8sApiCoreV1Pod
+      ): Observable<{ pod: k8s.IoK8sApiCoreV1Pod; logs: string }> =>
+        c.core.v1.Pod.logs(pod.metadata.name, pod.metadata.namespace).pipe(map(
+            (logs: string) => (logs == null ? { pod, logs: "" } : { pod, logs })
+        ));
     }
 
     export namespace service {
       const stub = (
         name: string,
-        labels?: Labels,
+        labels?: Labels
       ): k8s.IoK8sApiCoreV1Service => {
         const svc = <k8s.IoK8sApiCoreV1Service>{
-          "kind": "Service",
-          "apiVersion": "v1",
-          "metadata": {
-            name: name,
+          kind: "Service",
+          apiVersion: "v1",
+          metadata: {
+            name: name
           },
-          "spec": {}
+          spec: {}
         };
         if (labels) {
           svc.metadata.labels = labels;
         }
 
         return svc;
-      }
+      };
 
       //
       // Constructors.
@@ -434,19 +506,22 @@ export namespace core {
        */
       export const makeClusterIp = (
         name: string,
-        ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
+        ports:
+          | number
+          | k8s.IoK8sApiCoreV1ServicePort
+          | k8s.IoK8sApiCoreV1ServicePort[],
         selector: Labels,
-        labels: Labels = {app: name},
+        labels: Labels = { app: name }
       ): k8s.IoK8sApiCoreV1Service => {
         const svc = stub(name, labels);
         return merge<k8s.IoK8sApiCoreV1Service>(_ => ({
           spec: <k8s.IoK8sApiCoreV1ServiceSpec>{
             type: "ClusterIP",
             ports: util.makeServicePorts(ports),
-            selector: selector,
+            selector: selector
           }
         }))(svc);
-      }
+      };
 
       /**
        * Defines a service that is exposed externally using a cloud provider's
@@ -497,12 +572,15 @@ export namespace core {
        */
       export const makeLoadBalancer = (
         name: string,
-        ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
+        ports:
+          | number
+          | k8s.IoK8sApiCoreV1ServicePort
+          | k8s.IoK8sApiCoreV1ServicePort[],
         selector: Labels,
-        labels: Labels = {app: name},
+        labels: Labels = { app: name },
         loadBalancerSourceRanges?: string[],
         externalTrafficPolicy?: "Local" | "Cluster",
-        externalIps?: string[],
+        externalIps?: string[]
       ): k8s.IoK8sApiCoreV1Service => {
         let svc = stub(name, labels);
 
@@ -515,13 +593,16 @@ export namespace core {
             type: "LoadBalancer",
             ports: util.makeServicePorts(ports),
             externalTrafficPolicy: externalTrafficPolicy,
-            selector: selector,
+            selector: selector
           }
         }))(svc);
-        svc = configureForExternalTraffic(externalTrafficPolicy, loadBalancerSourceRanges)(svc);
+        svc = configureForExternalTraffic(
+          externalTrafficPolicy,
+          loadBalancerSourceRanges
+        )(svc);
 
         return svc;
-      }
+      };
 
       /**
        * Defines a service that directs traffic to an arbitrary domain that is
@@ -543,18 +624,18 @@ export namespace core {
       export const makeExternalName = (
         serviceName: string,
         externalName: string,
-        labels: Labels = {app: serviceName},
+        labels: Labels = { app: serviceName }
       ): k8s.IoK8sApiCoreV1Service => {
         let svc = stub(serviceName, labels);
         svc = merge<k8s.IoK8sApiCoreV1Service>(_ => ({
           spec: <k8s.IoK8sApiCoreV1ServiceSpec>{
             type: "ExternalName",
-            externalName: externalName,
+            externalName: externalName
           }
         }))(svc);
 
         return svc;
-      }
+      };
 
       //
       // TODO:
@@ -573,9 +654,11 @@ export namespace core {
        * @param  {Labels} labels Labels to be used to select pods
        * @returns Transformer that sets labels in the in a service object
        */
-      export const setSelector = (labels: Labels): Transform<k8s.IoK8sApiCoreV1Service> => {
-        return doTransform(s => s.spec.selector = labels);
-      }
+      export const setSelector = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApiCoreV1Service> => {
+        return doTransform(s => (s.spec.selector = labels));
+      };
 
       /**
        * Replace existing ports exposed by the service (if any), and set them
@@ -586,10 +669,13 @@ export namespace core {
        * @returns Transformer that replaces the ports in a service object
        */
       export const setPorts = (
-        ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
+        ports:
+          | number
+          | k8s.IoK8sApiCoreV1ServicePort
+          | k8s.IoK8sApiCoreV1ServicePort[]
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
-        return doTransform(s => s.spec.ports = util.makeServicePorts(ports));
-      }
+        return doTransform(s => (s.spec.ports = util.makeServicePorts(ports)));
+      };
 
       /**
        * Append some number of ports to the list of ports exposed by a service
@@ -601,7 +687,10 @@ export namespace core {
        * ports in a service object
        */
       export const appendPorts = (
-        ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
+        ports:
+          | number
+          | k8s.IoK8sApiCoreV1ServicePort
+          | k8s.IoK8sApiCoreV1ServicePort[]
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
         return doTransform(s => {
           if (s.spec.ports) {
@@ -610,7 +699,7 @@ export namespace core {
             s.spec.ports = util.makeServicePorts(ports);
           }
         });
-      }
+      };
 
       /**
        * Configure a service with type "LoadBalancer" for external traffic. This
@@ -656,11 +745,13 @@ export namespace core {
       export const configureForExternalTraffic = (
         externalTrafficPolicy: "Local" | "Cluster" = "Cluster",
         loadBalancerSourceRanges?: string[],
-        externalIps?: string[],
+        externalIps?: string[]
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
         return doTransform(s => {
           if (s.spec.type !== "LoadBalancer") {
-            throw new Error("Can't configure external traffic on service whose type is not `LoadBalancer`");
+            throw new Error(
+              "Can't configure external traffic on service whose type is not `LoadBalancer`"
+            );
           }
 
           s.spec.externalTrafficPolicy = externalTrafficPolicy;
@@ -673,10 +764,11 @@ export namespace core {
             s.spec.externalIPs = externalIps;
           }
         });
-      }
+      };
 
       export const targetsPod = (
-        service: k8s.IoK8sApiCoreV1Service, pod: k8s.IoK8sApiCoreV1Pod,
+        service: k8s.IoK8sApiCoreV1Service,
+        pod: k8s.IoK8sApiCoreV1Pod
       ): boolean => {
         const selector = service.spec.selector;
         // Service doesn't target any pods.
@@ -686,18 +778,19 @@ export namespace core {
 
         return syncQuery
           .from(service.spec.selector)
-          .all(({key, value}) =>
-            pod.metadata.labels != null &&
-            pod.metadata.labels[key] == value)
-      }
+          .all(
+            ({ key, value }) =>
+              pod.metadata.labels != null && pod.metadata.labels[key] == value
+          );
+      };
 
       export const listTargetedPods = (
-        c: client.Client, service: k8s.IoK8sApiCoreV1Service
-      ): query.Observable<k8s.IoK8sApiCoreV1Pod[]> =>
-        c.core.v1.Pod
-          .list(service.metadata.namespace)
-          .filter(pod => targetsPod(service, pod))
-          .toArray();
+        c: client.Client,
+        service: k8s.IoK8sApiCoreV1Service
+      ): Observable<k8s.IoK8sApiCoreV1Pod[]> =>
+        c.core.v1.Pod.list(service.metadata.namespace).pipe(
+          filter(pod => targetsPod(service, pod)),
+          toArray());
 
       export interface PodWatchListUpdate {
         readonly currentPodUpdate: client.WatchEvent<k8s.IoK8sApiCoreV1Pod>;
@@ -705,19 +798,19 @@ export namespace core {
       }
 
       export const watchTargetedPods = (
-        c: client.Client, service: k8s.IoK8sApiCoreV1Service
-      ): query.Observable<PodWatchListUpdate> => {
+        c: client.Client,
+        service: k8s.IoK8sApiCoreV1Service
+      ): Observable<PodWatchListUpdate> => {
         const pods = new Map<string, k8s.IoK8sApiCoreV1Pod>();
-        return c.core.v1.Pod
-          .watch(service.metadata.namespace)
-          .flatMap(currentPodUpdate => {
+        return c.core.v1.Pod.watch(service.metadata.namespace).pipe(flatMap(
+          currentPodUpdate => {
             const key = currentPodUpdate.object.metadata.name;
             const targeted = targetsPod(service, currentPodUpdate.object);
             if (!targeted && pods.has(key)) {
               // It was previously targeted, but the labels have changed such
               // that it isn't anymore. Mark as deleted, and report.
               pods.delete(key);
-              return [{pods, currentPodUpdate}];
+              return [{ pods, currentPodUpdate }];
             } else if (!targeted) {
               // It is not currently targeted.
               return [];
@@ -727,16 +820,17 @@ export namespace core {
             switch (currentPodUpdate.type) {
               case "MODIFIED":
               case "ADDED":
-                pods.set(key, currentPodUpdate.object)
+                pods.set(key, currentPodUpdate.object);
                 break;
               default:
                 pods.delete(key);
                 break;
             }
 
-            return [{pods, currentPodUpdate}];
-          })
-      }
+            return [{ pods, currentPodUpdate }];
+          }
+        ));
+      };
 
       export interface PodEndpointUpdate {
         podName: string;
@@ -749,15 +843,17 @@ export namespace core {
       }
 
       export const watchEndpointsByPod = (
-        c: client.Client, service: k8s.IoK8sApiCoreV1Service,
-      ): query.Observable<EndpointsWatchListUpdate> => {
+        c: client.Client,
+        service: k8s.IoK8sApiCoreV1Service
+      ): Observable<EndpointsWatchListUpdate> => {
         const endpointSet = new Map<string, k8s.IoK8sApiCoreV1EndpointPort[]>();
-        return c.core.v1.Endpoints
-          .watch(service.metadata.namespace)
-          .filter(({object: endpoints}) =>
-            endpoints.metadata.name == service.metadata.name)
-          .flatMap(update => {
-            const {object: endpoints, type} = update;
+        return c.core.v1.Endpoints.watch(service.metadata.namespace).pipe(
+          filter(
+            ({ object: endpoints }) =>
+              endpoints.metadata.name == service.metadata.name
+          ),
+          flatMap(update => {
+            const { object: endpoints, type } = update;
             const subsets = endpoints.subsets == null ? [] : endpoints.subsets;
             // Rearrange the unintuitively-structured endpoints object to an
             // object roughly like: {podName, ports}.
@@ -766,51 +862,58 @@ export namespace core {
             // If it doesn't, the `reduce` below is unbounded and will never
             // return (essentially: each `...subsets` below will depend on all
             // endpoints ad infinatum, rather than those in `endpoints` above) .
-            return query.Observable
-              .of(...subsets)
-              // Each "subset" is a basically a collection of pod addresses that
-              // expose the same ports, organized as `{port[], podAddress[]}`.
-              // Flatten this to `{podAddress, port[]}[]`. This allows us to
-              // aggregate by pod name.
-              .flatMap(({addresses, ports}) => {
-                const addrs = addresses == null ? [] : addresses;
-                return query.Observable
-                  .of(...addrs)
-                  .flatMap(address => [{podName: address.targetRef.name, ports}]);
-              })
-              // Group by pod name.
-              .groupBy(({podName}) => podName)
-              // Flatten. Each `addressGroup` will be an array `{podName,
-              // ports[]}[]`, where `podName` is the same in each element. Here
-              // we flatten it to be `{podName, ports[]}`, i.e., a single object
-              // containing all ports that (the endpoint believes) are exposed
-              // on `podName`.
-              .flatMap(addressGroup =>
-                addressGroup
-                  .reduce((acc: k8s.IoK8sApiCoreV1EndpointPort[], {ports}) =>
-                    acc.concat(ports), [])
-                  .flatMap(ports => {
-                    switch (type) {
-                      case "ADDED":
-                      case "MODIFIED":
-                        endpointSet.set(addressGroup.key, ports);
-                        break;
-                      default:
-                        endpointSet.delete(addressGroup.key);
-                    }
-                    return [{
-                      endpoints: endpointSet,
-                      currentEndpointUpdate: {
-                        type: type,
-                        object: {
-                          podName: addressGroup.key,
-                          ports: ports,
-                        },
-                      },
-                    }];
-                  }));
-          });
-      }
+            return (
+              of(...subsets).pipe(
+                // Each "subset" is a basically a collection of pod addresses that
+                // expose the same ports, organized as `{port[], podAddress[]}`.
+                // Flatten this to `{podAddress, port[]}[]`. This allows us to
+                // aggregate by pod name.
+                flatMap(({ addresses, ports }) => {
+                  const addrs = addresses == null ? [] : addresses;
+                  return of(...addrs).pipe(flatMap(address => [
+                    { podName: address.targetRef.name, ports }
+                  ]));
+                }),
+                // Group by pod name.
+                groupBy(({ podName }) => podName),
+                // Flatten. Each `addressGroup` will be an array `{podName,
+                // ports[]}[]`, where `podName` is the same in each element. Here
+                // we flatten it to be `{podName, ports[]}`, i.e., a single object
+                // containing all ports that (the endpoint believes) are exposed
+                // on `podName`.
+                flatMap(addressGroup =>
+                  addressGroup.pipe(
+                    reduce(
+                      (acc: k8s.IoK8sApiCoreV1EndpointPort[],  ports ) =>
+                        acc.concat(ports),
+                      []
+                    ),
+                    flatMap(ports => {
+                      switch (type) {
+                        case "ADDED":
+                        case "MODIFIED":
+                          endpointSet.set(addressGroup.key, ports);
+                          break;
+                        default:
+                          endpointSet.delete(addressGroup.key);
+                      }
+                      return [
+                        {
+                          endpoints: endpointSet,
+                          currentEndpointUpdate: {
+                            type: type,
+                            object: {
+                              podName: addressGroup.key,
+                              ports: ports
+                            }
+                          }
+                        }
+                      ];
+                    })
+                )
+            )));
+          }));
+      };
     }
 
     export namespace volume {
@@ -819,14 +922,14 @@ export namespace core {
         volumeName?: string,
         defaultPermissions = 0o644,
         filesToInclude?: k8s.IoK8sApiCoreV1KeyToPath[],
-        optional: boolean = false,
+        optional: boolean = false
       ): k8s.IoK8sApiCoreV1Volume => {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName ? volumeName : `${configMapName}-volume`,
           configMap: {
             name: configMapName,
-            defaultMode: defaultPermissions,
-          },
+            defaultMode: defaultPermissions
+          }
         };
 
         if (filesToInclude) {
@@ -838,7 +941,7 @@ export namespace core {
         }
 
         return v;
-      }
+      };
 
       // export const makeDownwardApi = (
       //   volumeName: string,
@@ -855,11 +958,11 @@ export namespace core {
       export const makeEmptyDir = (
         volumeName: string,
         storageMedium?: "" | "Memory",
-        sizeLimit?: string,
+        sizeLimit?: string
       ): k8s.IoK8sApiCoreV1Volume => {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName,
-          emptyDir: {},
+          emptyDir: {}
         };
         if (storageMedium) {
           v.emptyDir.medium = storageMedium;
@@ -870,41 +973,41 @@ export namespace core {
         }
 
         return v;
-      }
+      };
 
       export const makeGitRepo = (
         volumeName: string,
         repository: string,
         revision: string,
-        directory?: string,
+        directory?: string
       ): k8s.IoK8sApiCoreV1Volume => {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName,
           gitRepo: {
             repository: repository,
-            revision: revision,
-          },
+            revision: revision
+          }
         };
         if (directory) {
           v.gitRepo.directory = directory;
         }
 
         return v;
-      }
+      };
 
       export const makeHostPath = (
         volumeName: string,
-        path: string,
+        path: string
       ): k8s.IoK8sApiCoreV1Volume => {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName,
           hostPath: {
-            path: path,
-          },
+            path: path
+          }
         };
 
         return v;
-      }
+      };
 
       export const makePersistentVolumeClaim = (
         claimName: string,
@@ -914,8 +1017,8 @@ export namespace core {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName ? volumeName : `${claimName}-volume`,
           persistentVolumeClaim: {
-            claimName: claimName,
-          },
+            claimName: claimName
+          }
         };
 
         if (readOnly) {
@@ -923,7 +1026,7 @@ export namespace core {
         }
 
         return v;
-      }
+      };
 
       // export const makeProjected = (
       //   volumeName: string,
@@ -939,14 +1042,14 @@ export namespace core {
         volumeName?: string,
         defaultPermissions = 0o644,
         keysToInclude?: k8s.IoK8sApiCoreV1KeyToPath[],
-        optional: boolean = false,
+        optional: boolean = false
       ): k8s.IoK8sApiCoreV1Volume => {
         const v = <k8s.IoK8sApiCoreV1Volume>{
           name: volumeName ? volumeName : `${secretName}-volume`,
           secret: {
             secretName: secretName,
-            defaultMode: defaultPermissions,
-          },
+            defaultMode: defaultPermissions
+          }
         };
 
         if (keysToInclude) {
@@ -958,7 +1061,7 @@ export namespace core {
         }
 
         return v;
-      }
+      };
     }
   }
 }
@@ -971,25 +1074,25 @@ export namespace certificates {
   export namespace v1beta1 {
     export namespace certificateSigningRequest {
       export const getStatus = (
-        csr: k8s.IoK8sApiCertificatesV1beta1CertificateSigningRequest,
+        csr: k8s.IoK8sApiCertificatesV1beta1CertificateSigningRequest
       ): k8s.IoK8sApiCertificatesV1beta1CertificateSigningRequestCondition => {
         const pending = {
           type: "Pending",
           message: "Pending",
           reason: "Pending",
-          lastUpdateTime: {}
         };
         if (csr.status.conditions == null) {
           return pending;
         }
 
-        const conditions = csr.status.conditions
-          .filter(cond => cond.type == "Approved" || cond.type == "Denied");
+        const conditions = csr.status.conditions.filter(
+          cond => cond.type == "Approved" || cond.type == "Denied"
+        );
 
         return conditions.length > 0
-          ? conditions[conditions.length-1]
+          ? conditions[conditions.length - 1]
           : pending;
-      }
+      };
     }
   }
 }
@@ -1008,17 +1111,20 @@ export namespace apps {
       export const make = (
         name: string,
         appLabels: Labels,
-        app: k8s.IoK8sApiCoreV1Container | k8s.IoK8sApiCoreV1Container[] | k8s.IoK8sApiCoreV1Pod,
+        app:
+          | k8s.IoK8sApiCoreV1Container
+          | k8s.IoK8sApiCoreV1Container[]
+          | k8s.IoK8sApiCoreV1Pod,
         replicas: number = 1,
-        revisionHistoryLimit = 10,
+        revisionHistoryLimit = 10
       ): k8s.IoK8sApiAppsV1beta1Deployment => {
         let podSpec: k8s.IoK8sApiCoreV1PodSpec | null = null;
         if ((<any>app)["kind"] === "Pod") {
-          podSpec = (<k8s.IoK8sApiCoreV1Pod><object>app).spec;
+          podSpec = (<k8s.IoK8sApiCoreV1Pod>(<object>app)).spec;
         } else if (Array.isArray(app)) {
-          podSpec = <k8s.IoK8sApiCoreV1PodSpec>{containers: app};
+          podSpec = <k8s.IoK8sApiCoreV1PodSpec>{ containers: app };
         } else {
-          podSpec = <k8s.IoK8sApiCoreV1PodSpec>{containers: [app]};
+          podSpec = <k8s.IoK8sApiCoreV1PodSpec>{ containers: [app] };
         }
 
         return <k8s.IoK8sApiAppsV1beta1Deployment>{
@@ -1026,7 +1132,7 @@ export namespace apps {
           kind: "Deployment",
           metadata: {
             name: name,
-            labels: appLabels,
+            labels: appLabels
           },
           spec: {
             revisionHistoryLimit: revisionHistoryLimit,
@@ -1036,11 +1142,11 @@ export namespace apps {
               metadata: {
                 labels: appLabels
               },
-              spec: podSpec,
+              spec: podSpec
             }
           }
         };
-      }
+      };
 
       //
       // Transformers.
@@ -1048,7 +1154,7 @@ export namespace apps {
 
       export const configureLifecycle = (
         minReadySeconds?: number,
-        progressDeadlineSeconds?: number,
+        progressDeadlineSeconds?: number
       ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
         return doTransform(d => {
           if (minReadySeconds) {
@@ -1059,79 +1165,104 @@ export namespace apps {
             d.spec.progressDeadlineSeconds = progressDeadlineSeconds;
           }
         });
-      }
+      };
 
-      export const setUpdateStrategyRecreate = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
+      export const setUpdateStrategyRecreate = (): Transform<
+        k8s.IoK8sApiAppsV1beta1Deployment
+      > => {
         return doTransform(d => {
           d.spec.strategy = <k8s.IoK8sApiAppsV1beta1DeploymentStrategy>{
-            type: "Recreate",
-          }
+            type: "Recreate"
+          };
         });
-      }
+      };
 
       export const setUpdateStrategyRolling = (
         maxSurge?: number | string,
-        maxUnavailable?: number | string,
+        maxUnavailable?: number | string
       ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
         return doTransform(d => {
           d.spec.strategy = <k8s.IoK8sApiAppsV1beta1DeploymentStrategy>{
             type: "RollingUpdate",
             rollingUpdate: {
               maxSurge: maxSurge,
-              maxUnavailable: maxUnavailable,
-            },
+              maxUnavailable: maxUnavailable
+            }
           };
         });
-      }
+      };
 
       export namespace pod {
         export const transformContainers = (
           f: Transform<k8s.IoK8sApiCoreV1Container>,
-          filter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+          filter: Filter<k8s.IoK8sApiCoreV1Container> = (
+            _: k8s.IoK8sApiCoreV1Container
+          ) => true
         ): Transform<DeploymentTypes> => {
           return doTransform(d =>
-            util.v1.podSpec.transformContainers(f, filter)(d.spec.template.spec));
-        }
+            util.v1.podSpec.transformContainers(f, filter)(d.spec.template.spec)
+          );
+        };
 
         export const addVolume = (
           v: k8s.IoK8sApiCoreV1Volume,
           mountPath: string,
           readOnly = false,
           subPath?: string,
-          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+            _: k8s.IoK8sApiCoreV1Container
+          ) => true
         ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
           doTransform(p =>
             util.v1.podSpec.addVolume(
-              v, mountPath, readOnly, subPath, mountFilter
-            )(p.spec.template.spec));
+              v,
+              mountPath,
+              readOnly,
+              subPath,
+              mountFilter
+            )(p.spec.template.spec)
+          );
 
         export const addMount = (
           volumeName: string,
           mountPath: string,
           readOnly = false,
           subPath?: string,
-          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+            _: k8s.IoK8sApiCoreV1Container
+          ) => true
         ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
           doTransform(p =>
             util.v1.podSpec.addMount(
-              volumeName, mountPath, readOnly, subPath, mountFilter
-            )(p.spec.template.spec));
+              volumeName,
+              mountPath,
+              readOnly,
+              subPath,
+              mountFilter
+            )(p.spec.template.spec)
+          );
 
         export const addConfigData = (
           data: { [key: string]: string },
           mountPath: string,
           configMapName?: string,
-          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+            _: k8s.IoK8sApiCoreV1Container
+          ) => true
         ): Transform<DeploymentTypes, k8s.IoK8sApiCoreV1ConfigMap> => {
           return d => {
             if (!configMapName) {
               configMapName = d.metadata.name;
             }
             return util.v1.podSpec.addConfigData(
-              data, mountPath, configMapName, undefined, mountFilter,
+              data,
+              mountPath,
+              configMapName,
+              undefined,
+              mountFilter
             )(d.spec.template.spec);
-          }
-        }
+          };
+        };
 
         export const claimPersistentVolume = (
           pvClaim: string | k8s.IoK8sApiCoreV1PersistentVolume,
@@ -1140,38 +1271,60 @@ export namespace apps {
           volumeName?: string,
           readOnly = false,
           subPath?: string,
-          accessModes: core.v1.persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
-          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
-        ): Transform<k8s.IoK8sApiAppsV1beta1Deployment, k8s.IoK8sApiCoreV1PersistentVolumeClaim> =>
-          p =>
-            util.v1.podSpec.claimPersistentVolume(
-              pvClaim, mountPath, storageRequest, volumeName, readOnly, subPath,
-              accessModes, mountFilter,
-            )(p.spec.template.spec);
+          accessModes: core.v1.persistentVolume.AccessModeTypes[] = [
+            "ReadWriteOnce"
+          ],
+          mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+            _: k8s.IoK8sApiCoreV1Container
+          ) => true
+        ): Transform<
+          k8s.IoK8sApiAppsV1beta1Deployment,
+          k8s.IoK8sApiCoreV1PersistentVolumeClaim
+        > => p =>
+          util.v1.podSpec.claimPersistentVolume(
+            pvClaim,
+            mountPath,
+            storageRequest,
+            volumeName,
+            readOnly,
+            subPath,
+            accessModes,
+            mountFilter
+          )(p.spec.template.spec);
       }
 
-      export const setAppLabels = (labels: Labels): Transform<DeploymentTypes> => {
+      export const setAppLabels = (
+        labels: Labels
+      ): Transform<DeploymentTypes> => {
         return doTransform(
           d => util.v1.metadata.setLabels(labels)(d.metadata),
-          d => d.spec.template.metadata.labels = labels,
-          d => d.spec.selector = <k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector>{matchLabels: labels});
-      }
+          d => (d.spec.template.metadata.labels = labels),
+          d =>
+            (d.spec.selector = <
+              k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector
+            >{ matchLabels: labels })
+        );
+      };
 
       //
       // Verbs.
       //
 
       export const pause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.paused = true);
-      }
+        return doTransform(d => (d.spec.paused = true));
+      };
 
-      export const unpause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.paused = false);
-      }
+      export const unpause = (): Transform<
+        k8s.IoK8sApiAppsV1beta1Deployment
+      > => {
+        return doTransform(d => (d.spec.paused = false));
+      };
 
-      export const scale = (replicas: number): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.replicas = replicas);
-      }
+      export const scale = (
+        replicas: number
+      ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
+        return doTransform(d => (d.spec.replicas = replicas));
+      };
 
       //
       // TODO: autoscale
@@ -1186,12 +1339,12 @@ export namespace apps {
             serviceName ? serviceName : d.metadata.name,
             util.makeServicePorts(port),
             d.spec.template.metadata.labels,
-            d.metadata.labels,
+            d.metadata.labels
           );
 
           return svc;
-        }
-      }
+        };
+      };
 
       export const exposeToCluster = (
         port: k8s.IoK8sApiCoreV1ServicePort | number,
@@ -1202,32 +1355,37 @@ export namespace apps {
             serviceName ? serviceName : d.metadata.name,
             util.makeServicePorts(port),
             d.spec.template.metadata.labels,
-            d.metadata.labels,
+            d.metadata.labels
           );
 
           return svc;
-        }
-      }
+        };
+      };
 
       export const getRevisionHistory = (
-        c: client.Client, d: k8s.IoK8sApiAppsV1beta1Deployment,
-      ): query.Observable<k8s.IoK8sApiExtensionsV1beta1ReplicaSet> => {
-        return c.extensions.v1beta1.ReplicaSet
-          .list("default")
-          .filter(rs =>
-            syncQuery
-              .from(rs.metadata.ownerReferences)
-              .where(oref => oref.name == d.metadata.name)
-              .count() > 0)
-          .toArray()
-          .flatMap(rss => {
+        c: client.Client,
+        d: k8s.IoK8sApiAppsV1beta1Deployment
+      ): Observable<k8s.IoK8sApiExtensionsV1beta1ReplicaSet> => {
+        return c.extensions.v1beta1.ReplicaSet.list("default").pipe(
+          filter(
+            rs =>
+              syncQuery
+                .from(rs.metadata.ownerReferences)
+                .where(oref => oref.name == d.metadata.name)
+                .count() > 0
+          ),
+          toArray(),
+          flatMap(rss => {
             const arr = syncQuery
               .from(rss)
-              .orderBy(rs => rs.metadata.annotations["deployment.kubernetes.io/revision"])
+              .orderBy(
+                rs =>
+                  rs.metadata.annotations["deployment.kubernetes.io/revision"]
+              )
               .toArray();
-            return query.Observable.from(arr);
-          });
-      }
+            return from(arr);
+          }));
+      };
     }
   }
 }
@@ -1236,26 +1394,29 @@ export namespace rbacAuthorization {
   export namespace v1beta1 {
     export namespace role {
       export const appliesTo = (
-        role: k8s.IoK8sApiRbacV1beta1Role, apiGroup: string, resource: string,
+        role: k8s.IoK8sApiRbacV1beta1Role,
+        apiGroup: string,
+        resource: string
       ): boolean =>
         syncQuery
           .from(role.rules)
-          .any(rule =>
-            syncQuery
-              .from(rule.apiGroups)
-              .any(currGroup => currGroup == apiGroup) &&
-            syncQuery
-              .from(rule.resources)
-              .any(currRes => currRes == resource));
+          .any(
+            rule =>
+              syncQuery
+                .from(rule.apiGroups)
+                .any(currGroup => currGroup == apiGroup) &&
+              syncQuery.from(rule.resources).any(currRes => currRes == resource)
+          );
     }
 
     export namespace roleBinding {
       export const referencesRole = (
-        binding: k8s.IoK8sApiRbacV1beta1RoleBinding, name: string,
+        binding: k8s.IoK8sApiRbacV1beta1RoleBinding,
+        name: string
       ): boolean =>
         binding.roleRef.kind == "Role" &&
         binding.roleRef.apiGroup == "rbac.authorization.k8s.io" &&
-        binding.roleRef.name == name
+        binding.roleRef.name == name;
     }
   }
 }
@@ -1266,58 +1427,82 @@ export namespace rbacAuthorization {
 
 namespace util {
   export const makeContainerPorts = (
-    ports: number | k8s.IoK8sApiCoreV1ContainerPort | k8s.IoK8sApiCoreV1ContainerPort[],
+    ports:
+      | number
+      | k8s.IoK8sApiCoreV1ContainerPort
+      | k8s.IoK8sApiCoreV1ContainerPort[]
   ): k8s.IoK8sApiCoreV1ContainerPort[] => {
     if (Array.isArray(ports)) {
       return ports;
     } else if (isFinite(<number>ports)) {
-      return [<k8s.IoK8sApiCoreV1ContainerPort>{containerPort: ports}];
+      return [<k8s.IoK8sApiCoreV1ContainerPort>{ containerPort: ports }];
     }
     return [<k8s.IoK8sApiCoreV1ContainerPort>ports];
-  }
+  };
 
   export const makeServicePorts = (
-    ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
+    ports:
+      | number
+      | k8s.IoK8sApiCoreV1ServicePort
+      | k8s.IoK8sApiCoreV1ServicePort[]
   ): k8s.IoK8sApiCoreV1ServicePort[] => {
     if (Array.isArray(ports)) {
       return ports;
     } else if (isFinite(<number>ports)) {
-      return [<k8s.IoK8sApiCoreV1ServicePort><object>{port: ports, targetPort: ports}];
+      return [
+        <k8s.IoK8sApiCoreV1ServicePort>(
+          (<object>{ port: ports, targetPort: ports })
+        )
+      ];
     }
     return [<k8s.IoK8sApiCoreV1ServicePort>ports];
-  }
+  };
 
   export namespace v1 {
     export namespace metadata {
-      export const setName = (name: string): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m => m.name = name);
-      }
+      export const setName = (
+        name: string
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(m => (m.name = name));
+      };
 
-      export const setNamespace = (namespace: string): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m => m.namespace = namespace);
-      }
+      export const setNamespace = (
+        namespace: string
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(m => (m.namespace = namespace));
+      };
 
-      export const setAnnotations = (labels: Labels): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m => m.annotations = labels)
-      }
+      export const setAnnotations = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(m => (m.annotations = labels));
+      };
 
-      export const mergeAnnotations = (labels: Labels): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m =>
-          m.annotations
-            ? Object.assign(m.annotations, labels)
-            : m.annotations = labels);
-      }
+      export const mergeAnnotations = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(
+          m =>
+            m.annotations
+              ? Object.assign(m.annotations, labels)
+              : (m.annotations = labels)
+        );
+      };
 
-      export const setLabels = (labels: Labels): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m => m.labels = labels);
-      }
+      export const setLabels = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(m => (m.labels = labels));
+      };
 
-      export const mergeLabels = (labels: Labels): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
-        return doTransform(m =>
-          m.labels
-            ? Object.assign(m.labels, labels)
-            : m.labels = labels);
-      }
+      export const mergeLabels = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1ObjectMeta> => {
+        return doTransform(
+          m =>
+            m.labels ? Object.assign(m.labels, labels) : (m.labels = labels)
+        );
+      };
     }
 
     export namespace podSpec {
@@ -1327,7 +1512,7 @@ namespace util {
 
       export const transformContainers = (
         t: Transform<k8s.IoK8sApiCoreV1Container>,
-        filter: (c: k8s.IoK8sApiCoreV1Container) => boolean,
+        filter: (c: k8s.IoK8sApiCoreV1Container) => boolean
       ): Transform<k8s.IoK8sApiCoreV1PodSpec> => {
         return doTransform(spec => {
           const cs = [];
@@ -1341,7 +1526,7 @@ namespace util {
 
           spec.containers = cs;
         });
-      }
+      };
 
       //
       // Verbs.
@@ -1352,28 +1537,32 @@ namespace util {
         mountPath: string,
         readOnly = false,
         subPath?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1PodSpec> => {
         return doTransform(
           doTransform<k8s.IoK8sApiCoreV1PodSpec>(p => {
             p.volumes = p.volumes || [];
             p.volumes.push(v);
           }),
-          addMount(v.name, mountPath, readOnly, subPath, mountFilter),
+          addMount(v.name, mountPath, readOnly, subPath, mountFilter)
         );
-      }
+      };
 
       export const addMount = (
         volumeName: string,
         mountPath: string,
         readOnly = false,
         subPath?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1PodSpec> => {
         const mount = <k8s.IoK8sApiCoreV1VolumeMount>{
           name: volumeName,
           mountPath: mountPath,
-          readOnly: readOnly,
+          readOnly: readOnly
         };
         if (subPath) {
           mount.subPath = subPath;
@@ -1383,15 +1572,18 @@ namespace util {
             c.volumeMounts = c.volumeMounts || [];
             c.volumeMounts.push(mount);
           }),
-          mountFilter);
-      }
+          mountFilter
+        );
+      };
 
       export const addConfigData = (
         data: { [key: string]: string },
         mountPath: string,
         configMapName: string,
         configMapVolumeName?: string,
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
       ): Transform<k8s.IoK8sApiCoreV1PodSpec, k8s.IoK8sApiCoreV1ConfigMap> => {
         return p => {
           if (!configMapVolumeName) {
@@ -1402,18 +1594,18 @@ namespace util {
             <k8s.IoK8sApiCoreV1Volume>{
               name: configMapVolumeName,
               configMap: {
-                name: configMapName,
-              },
+                name: configMapName
+              }
             },
             mountPath,
             true,
             undefined,
-            mountFilter,
+            mountFilter
           )(p);
 
           return core.v1.configMap.make(configMapName, data);
-        }
-      }
+        };
+      };
 
       export const claimPersistentVolume = (
         pvClaim: string | k8s.IoK8sApiCoreV1PersistentVolume,
@@ -1422,14 +1614,21 @@ namespace util {
         volumeName?: string,
         readOnly = false,
         subPath?: string,
-        accessModes: core.v1.persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
-        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
-      ): Transform<k8s.IoK8sApiCoreV1PodSpec, k8s.IoK8sApiCoreV1PersistentVolumeClaim> => {
+        accessModes: core.v1.persistentVolume.AccessModeTypes[] = [
+          "ReadWriteOnce"
+        ],
+        mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (
+          _: k8s.IoK8sApiCoreV1Container
+        ) => true
+      ): Transform<
+        k8s.IoK8sApiCoreV1PodSpec,
+        k8s.IoK8sApiCoreV1PersistentVolumeClaim
+      > => {
         return p => {
           const pvClaimName =
-            typeof pvClaim === 'string' || pvClaim instanceof String
-            ? <string>pvClaim
-            : pvClaim.metadata.name;
+            typeof pvClaim === "string" || pvClaim instanceof String
+              ? <string>pvClaim
+              : pvClaim.metadata.name;
 
           if (!volumeName) {
             volumeName = `${pvClaimName}-volume`;
@@ -1439,38 +1638,50 @@ namespace util {
             <k8s.IoK8sApiCoreV1Volume>{
               name: volumeName,
               persistentVolumeClaim: {
-                claimName: pvClaimName,
+                claimName: pvClaimName
               }
             },
             mountPath,
             readOnly,
             subPath,
-            mountFilter,
+            mountFilter
           )(p);
 
-          return core.v1.persistentVolumeClaim.make(pvClaimName, storageRequest, accessModes);
-        }
-      }
+          return core.v1.persistentVolumeClaim.make(
+            pvClaimName,
+            storageRequest,
+            accessModes
+          );
+        };
+      };
     }
 
     export namespace labelSelector {
-      export const setMatchExpression = (selectors: k8s.IoK8sApimachineryPkgApisMetaV1LabelSelectorRequirement[]): Transform<k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector> => {
+      export const setMatchExpression = (
+        selectors: k8s.IoK8sApimachineryPkgApisMetaV1LabelSelectorRequirement[]
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector> => {
         return doTransform(s => {
           if (s.matchExpressions) {
-            throw new Error("Could not add `matchExpressions` selector to deployment: can't have both that and a `matchLabels` selector");
+            throw new Error(
+              "Could not add `matchExpressions` selector to deployment: can't have both that and a `matchLabels` selector"
+            );
           }
           s.matchExpressions = selectors;
         });
-      }
+      };
 
-      export const setMatchLabels = (labels: Labels): Transform<k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector> => {
+      export const setMatchLabels = (
+        labels: Labels
+      ): Transform<k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector> => {
         return doTransform(s => {
           if (s.matchExpressions) {
-            throw new Error("Could not add `matchLabels` selector to deployment: can't have both that and a `matchExpression` selector");
+            throw new Error(
+              "Could not add `matchLabels` selector to deployment: can't have both that and a `matchExpression` selector"
+            );
           }
           s.matchLabels = labels;
         });
-      }
+      };
     }
   }
 }
@@ -1482,7 +1693,7 @@ namespace util {
 export type Labels = { [key: string]: string };
 
 export type DeploymentTypes =
-    k8s.IoK8sApiAppsV1beta1Deployment
+  | k8s.IoK8sApiAppsV1beta1Deployment
   | k8s.IoK8sApiExtensionsV1beta1Deployment
   | k8s.IoK8sApiAppsV1beta1Deployment;
 
@@ -1492,10 +1703,10 @@ export const isDeployment = (o: any): o is DeploymentTypes => {
   }
 
   const nsCheck =
-       o.apiVersion === "apps/v1beta1"
-    || o.apiVersion === "apps/v1beta2"
-    || o.apiVersion === "extensions/v1beta1"
-    || o.apiVersion === "apps/v1";
+    o.apiVersion === "apps/v1beta1" ||
+    o.apiVersion === "apps/v1beta2" ||
+    o.apiVersion === "extensions/v1beta1" ||
+    o.apiVersion === "apps/v1";
 
   return o.kind === "Deployment" && nsCheck;
-}
+};

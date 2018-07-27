@@ -1,20 +1,21 @@
-import {Client, transform} from "../../src";
+import {Client} from "../../src";
+import {filter, flatMap, map, toArray} from "rxjs/operators";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
-const podsByClaim = c.core.v1.Secret
-  .list()
-  .flatMap(secret =>
-    c.core.v1.Pod
-      .list()
-      .filter(pod =>
-        pod.spec
-          .volumes
+const podsByClaim = c.core.v1.Secret.list().pipe(
+  flatMap(secret =>
+    c.core.v1.Pod.list().pipe(
+      filter(pod =>
+        pod.spec.volumes
           .filter(vol =>
             vol.secret &&
             vol.secret.secretName == secret.metadata.name)
-          .length > 0)
-      .toArray()
-      .map(pods => {return {secret: secret, pods: pods}}));
+          .length > 0),
+      toArray(),
+      map(pods => {return {secret: secret, pods: pods}})
+    )
+  )
+);
 
 // Print.
 podsByClaim.forEach(({secret, pods}) => {

@@ -1,10 +1,11 @@
-import {Client, query} from "../../src";
+import {Client} from "../../src";
+import {filter, groupBy} from "rxjs/operators";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
 const warningsAndErrors = c.core.v1.Event
-  .list()
-  .filter(e => e.type == "Warning" || e.type == "Error")
-  .groupBy(e => e.involvedObject.kind);
+  .list().pipe(
+  filter(e => e.type == "Warning" || e.type == "Error"),
+  groupBy(e => e.involvedObject.kind));
 
 warningsAndErrors.forEach(events => {
   console.log(`kind: ${events.key}`);

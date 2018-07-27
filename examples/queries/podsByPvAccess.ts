@@ -1,21 +1,20 @@
-import {Client, transform} from "../../src";
+import {Client} from "../../src";
+import {filter, flatMap, map, toArray} from "rxjs/operators";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
-const podsByClaim = c.core.v1.PersistentVolume
-  .list()
-  .filter(pv => pv.status.phase == "Bound")
-  .flatMap(pv =>
-    c.core.v1.Pod
-      .list()
-      .filter(pod =>
+const podsByClaim = c.core.v1.PersistentVolume.list().pipe(
+  filter(pv  => pv.status.phase == "Bound"),
+  flatMap(pv =>
+    c.core.v1.Pod.list().pipe(
+      filter(pod =>
         pod.spec
           .volumes
           .filter(vol =>
             vol.persistentVolumeClaim &&
             vol.persistentVolumeClaim.claimName == pv.spec.claimRef.name)
-          .length > 0)
-      .toArray()
-      .map(pods => {return {pv: pv, pods: pods}}));
+          .length > 0),
+      toArray(),
+      map(pods => {return {pv: pv, pods: pods}}))));
 
 // Print.
 podsByClaim.forEach(({pv, pods}) => {

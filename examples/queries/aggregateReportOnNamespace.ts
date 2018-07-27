@@ -1,17 +1,19 @@
-import {Client, query} from "../../src";
+import {Client} from "../../src";
+import {flatMap, toArray} from "rxjs/operators";
+import {forkJoin, of} from "rxjs";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
 const report = c.core.v1.Namespace
-  .list()
-  .flatMap(ns =>
-    query.Observable.forkJoin(
-      query.Observable.of(ns),
-      c.core.v1.Pod.list(ns.metadata.name).toArray(),
-      c.core.v1.Secret.list(ns.metadata.name).toArray(),
-      c.core.v1.Service.list(ns.metadata.name).toArray(),
-      c.core.v1.ConfigMap.list(ns.metadata.name).toArray(),
-      c.core.v1.PersistentVolumeClaim.list(ns.metadata.name).toArray(),
-    ));
+  .list().pipe(
+  flatMap(ns =>
+    forkJoin(
+      of(ns),
+      c.core.v1.Pod.list(ns.metadata.name).pipe(toArray()),
+      c.core.v1.Secret.list(ns.metadata.name).pipe(toArray()),
+      c.core.v1.Service.list(ns.metadata.name).pipe(toArray()),
+      c.core.v1.ConfigMap.list(ns.metadata.name).pipe(toArray()),
+      c.core.v1.PersistentVolumeClaim.list(ns.metadata.name).pipe(toArray()),
+    )));
 
 // Print small report.
 report.forEach(([ns, pods, secrets, services, configMaps, pvcs]) => {

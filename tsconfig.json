@@ -18,18 +18,20 @@
     "noImplicitThis": true,
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": true,
+    "noImplicitAny": false,
     "pretty": true,
     "strictFunctionTypes": true,
-    "strictNullChecks": true,
-    "strictPropertyInitialization": true,
+    "strictNullChecks": false,
+//    "strictPropertyInitialization": true,
     "strict": true
   },
   "include": [
-    "./src/**/*",
-    "./scripts/**/*",
-    "./examples/**/*.ts",
-    "./test/**/*"
+    "./src/index.ts"
+//    "./src/**/*",
+//    "./src/**/*",
+//    "./scripts/**/*",
+//    "./examples/**/*.ts",
+//    "./test/**/*"
   ],
   "exclude": [
     "examples/guestbook",

@@ -1,9 +1,9 @@
-import {Client, query} from "../../src";
+import {Client} from "../../src";
+import {filter} from "rxjs/operators";
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
-const loadBalancers = c.core.v1.Service
-  .list()
-  .filter(svc => svc.spec.type == "LoadBalancer");
+const loadBalancers = c.core.v1.Service.list().pipe(
+  filter(svc => svc.spec.type == "LoadBalancer"));
 
 // Print.
 loadBalancers.forEach(

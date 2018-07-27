@@ -1,18 +1,18 @@
-import {Client, query} from "../../src";
+import {Client} from "../../src";
+import {filter} from "rxjs/operators";
 
 //
 // Retrieve pods running on a node where memory pressure is high.
 //
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
 
-const podsNoLimits = c.core.v1.Pod
-  .list("default")
-  .filter(pod => {
+const podsNoLimits = c.core.v1.Pod.list("default").pipe(
+  filter(pod => {
     return pod.spec
       .containers
       .filter(cont => Object.keys(cont.resources).length === 0)
       .length > 0;
-  });
+  }));
 
 //
 // Outputs a list of pod names with no limits. Something like:

@@ -1,21 +1,21 @@
-import {Client, query, transform} from "../../src";
+import {Client, transform} from "../../src";
+import {flatMap} from "rxjs/operators";
 
 //
 // Create a list of services and the pods they target.
 //
 
 const c = Client.fromFile(<string>process.env.KUBECONFIG);
-const servicesAndPods = c.core.v1.Service
-  .list("default")
-  .flatMap(service =>
+const servicesAndPods = c.core.v1.Service.list("default").pipe(
+  flatMap(service =>
     transform.core.v1.service
-      .listTargetedPods(c, service)
-      .flatMap(pods => {
+      .listTargetedPods(c, service).pipe(
+      flatMap(pods => {
         return [{
           service: service,
           pods: pods,
         }];
-      }));
+      }))));
 
 //
 // Outputs a list of services and the pods they target. Something like:

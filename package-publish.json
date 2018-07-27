@@ -1,5 +1,5 @@
 {
-  "name": "@xmllking/kuberx",
+  "name": "@xmlking/kuberx",
   "version": "0.1.0",
   "description": "",
   "scripts": {
@@ -24,12 +24,15 @@
     "prettier": "^1.13.7",
     "request": "^2.87.0",
     "tab": "^1.0.0",
+    "ts-node": "^7.0.0",
     "typescript": "^2.9.2"
   },
   "main": "index.js",
   "types": "index.d.ts",
+  "dependencies": {
+    "@carbonql/kubernetes-client-node": "^0.1.11"
+  },
   "pearDependencies": {
-    "@carbonql/kubernetes-client-node": "^0.1.11",
     "linq": ">=3.1.0",
     "rxjs": ">=6.0.0"
   }
